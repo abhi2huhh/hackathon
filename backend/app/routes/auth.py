@@ -4,7 +4,11 @@ from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_requir
 from app.extensions import db, limiter
 from app.models.role import Role
 from app.models.user import User
-from app.services.mongo_auth_service import authenticate, create_new
+from app.services.mongo_auth_service import (
+    MongoAuthUnavailable,
+    authenticate,
+    create_new,
+)
 from app.utils.activity import log_activity
 from app.utils.error_handlers import APIError, success
 from app.utils.validators import parse_email, parse_password, require_fields
@@ -29,6 +33,9 @@ def register():
     except ValueError as exc:
         db.session.rollback()
         raise APIError("CONFLICT", str(exc), 409) from exc
+    except MongoAuthUnavailable as exc:
+        db.session.rollback()
+        raise APIError("MONGODB_UNAVAILABLE", str(exc), 503) from exc
     log_activity(None, "register", email)
     db.session.commit()
     token = create_access_token(identity=str(user.id), additional_claims={"role": user.role})

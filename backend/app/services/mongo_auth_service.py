@@ -9,13 +9,18 @@ from app.models.user import User
 
 try:
     from pymongo import MongoClient
-    from pymongo.errors import DuplicateKeyError
+    from pymongo.errors import DuplicateKeyError, PyMongoError
 except ImportError:  # Local SQL-only development remains supported.
     MongoClient = None
     DuplicateKeyError = Exception
+    PyMongoError = Exception
 
 
 _client = None
+
+
+class MongoAuthUnavailable(Exception):
+    pass
 
 
 def mongo_enabled() -> bool:
@@ -78,6 +83,10 @@ def create_new(user: User) -> None:
         )
     except DuplicateKeyError:
         raise ValueError("An account with this email already exists.")
+    except PyMongoError as exc:
+        raise MongoAuthUnavailable(
+            "MongoDB Atlas is unavailable. Check Atlas Network Access and the MONGODB_URI password."
+        ) from exc
 
 
 def authenticate(email: str, password: str, user: User) -> bool:
