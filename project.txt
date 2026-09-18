@@ -1,0 +1,752 @@
+INNOLEARN PROJECT SUMMARY
+==========================
+
+1. PROJECT IDENTITY
+-------------------
+Project name: InnoLearn
+Repository: https://github.com/abhi2huhh/hackathon
+Project type: Full-stack learning and career development platform
+Architecture style: React single-page application plus Flask REST API
+Deployment target:
+- Frontend: Vercel
+- Backend: Render
+- Primary relational data: PostgreSQL in production, SQLite for local development/tests
+- Authentication records: MongoDB Atlas support has been added
+
+InnoLearn combines learning resources, technical roadmaps, resume analysis, document summarization, and document question answering in one authenticated workspace.
+
+The product is designed for students and technical professionals who want to:
+- Explore learning roadmaps
+- Track progress through roadmap steps
+- Search and bookmark educational resources
+- Analyze a resume against a job role
+- Summarize text or uploaded documents
+- Upload documents and ask questions about them
+- Manage their account securely
+- Provide administrators with tools to manage users, resources, roles, and roadmaps
+
+2. HIGH-LEVEL ARCHITECTURE
+--------------------------
+
+The browser runs the React frontend. The frontend calls the Flask backend through JSON and multipart HTTP requests.
+
+Request flow:
+
+    User browser
+        |
+        | HTTPS requests to /api
+        v
+    React + Vite frontend on Vercel
+        |
+        | VITE_API_URL
+        v
+    Flask API + Gunicorn on Render
+        |
+        +--> PostgreSQL / SQLAlchemy for application data
+        |
+        +--> MongoDB Atlas for authentication records when MONGODB_URI is configured
+        |
+        +--> Optional LLM providers for generated answers and abstractive features
+        |
+        +--> Local or persistent upload storage depending on deployment design
+
+The backend uses Flask's application factory pattern. The main factory is create_app() in backend/app/__init__.py. It initializes database access, JWT authentication, CORS, rate limiting, blueprints, error handlers, and security headers.
+
+The frontend uses React Router to separate public pages from protected application pages. Authenticated requests include a JWT access token from localStorage.
+
+3. WHY THIS TECH STACK WAS USED
+--------------------------------
+
+React
+- Component-based UI development
+- Good support for interactive dashboards, forms, protected routes, and reusable components
+- Works well with Vite for fast local development and optimized production builds
+
+TypeScript
+- Adds static type checking to frontend code
+- Reduces errors in API responses, forms, component props, and route data
+- Makes the frontend easier to maintain as the application grows
+
+Vite
+- Fast development server
+- Fast production build pipeline
+- Reads VITE_* environment variables during the build
+- Suitable for deploying the generated dist directory to Vercel
+
+Tailwind CSS
+- Utility-based styling system
+- Helps keep visual styling consistent
+- Allows responsive layouts without maintaining a large custom stylesheet
+
+Motion
+- Provides page transitions and interface animations
+- Used to make the interface feel responsive without writing complex animation logic
+
+React Three Fiber and Three.js
+- Used for the 3D knowledge visualization component
+- Allows 3D scenes to be expressed with React components
+- Provides a more distinctive visual identity for the learning interface
+
+Flask
+- Lightweight Python web framework
+- Good for REST APIs and modular blueprints
+- Easy to organize authentication, resources, analysis, and AI services separately
+
+SQLAlchemy and Flask-SQLAlchemy
+- ORM for relational database access
+- Maps Python classes to database tables
+- Handles relationships, foreign keys, queries, and transactions
+- Used by most of the current application data layer
+
+PostgreSQL
+- Production relational database
+- Suitable for users, roadmaps, progress, documents, resources, bookmarks, summaries, and activity logs
+- Supports relational integrity and indexes better than a temporary deployment filesystem
+
+SQLite
+- Local fallback when DATABASE_URL is not configured
+- Used for local development and tests because it is simple and requires no database server
+- Should not be used as the production database on Render because Render service storage is not a reliable permanent database
+
+MongoDB Atlas and PyMongo
+- MongoDB Atlas is a managed cloud document database
+- PyMongo is the Python driver used by this backend
+- MongoDB support was added for authentication records
+- The app preserves the SQL numeric user ID so existing SQL foreign keys and JWT-protected routes continue to work
+
+JWT
+- Stateless access-token authentication
+- The backend creates a token after login or registration
+- The frontend stores the token in localStorage and sends it as a Bearer token
+- Protected Flask routes use flask-jwt-extended
+
+Gunicorn
+- Production WSGI server for Flask
+- Render starts the backend with Gunicorn rather than Flask's development server
+
+Pytest
+- Backend test framework
+- The existing suite validates authentication and the main modules
+
+4. FRONTEND STRUCTURE
+---------------------
+
+Location: frontend/
+
+Important files:
+
+frontend/index.html
+- Browser document shell
+- Contains the InnoLearn title and metadata
+
+frontend/src/main.tsx
+- React application entry point
+- Mounts the application into the HTML root element
+
+frontend/src/App.tsx
+- Main application component and application-level layout wiring
+
+frontend/src/router/index.tsx
+- Defines public and protected routes
+- Uses protected-route behavior for authenticated application pages
+
+frontend/src/context/AuthContext.tsx
+- Stores authentication state
+- Reads and writes the access_token in localStorage
+- Calls the backend /auth/me endpoint to restore a session
+- Handles logout and session clearing
+
+frontend/src/services/api.ts
+- Central API request helper
+- Reads VITE_API_URL
+- Adds Content-Type for JSON requests
+- Adds the Authorization Bearer token when available
+- Converts failed API responses into ApiRequestError instances
+
+The API base URL is calculated as:
+
+    import.meta.env.VITE_API_URL || "/api"
+
+For production Vercel deployment, use:
+
+    VITE_API_URL=https://hackathon-nbr0.onrender.com/api
+
+Important: Vite environment variables are embedded during the build. After changing VITE_API_URL in Vercel, the frontend must be redeployed.
+
+Main frontend pages include:
+- LandingPage: public product introduction
+- LoginPage: user login
+- RegisterPage: account creation
+- DashboardPage: authenticated learning overview
+- ProfilePage: profile and account information
+- ATSPage: resume/job-role analysis
+- RAGPage: document upload and question answering
+- ResourcesPage: searchable learning resource library
+- ResourceDetailPage: individual resource details
+- AdminPage: administrator management tools
+- NotFoundPage: fallback route
+
+Reusable frontend areas include:
+- components/layout: application shell and footer
+- components/navigation: navbar and protected navigation behavior
+- components/ui: buttons, cards, inputs, badges, errors, empty states
+- components/3d: Three.js/React Three Fiber visualizations
+- hooks: debounced values and motion preferences
+- lib: animation helpers and utility functions
+- types: shared TypeScript types
+
+5. BACKEND STRUCTURE
+--------------------
+
+Location: backend/
+
+backend/run.py
+- Local development entry point
+- Creates the Flask app and runs it on port 5000
+
+backend/wsgi.py
+- Production WSGI entry point
+- Exposes app = create_app()
+- Used by Gunicorn on Render
+
+backend/app/__init__.py
+- Application factory
+- Initializes db, migrations, JWT, CORS, and rate limiting
+- Imports models so SQLAlchemy knows all table definitions
+- Registers all API blueprints
+- Adds security response headers
+
+backend/app/config.py
+- Loads environment variables using python-dotenv
+- Defines production and local defaults
+- Defines SQLALCHEMY_DATABASE_URI
+- Defines MongoDB configuration
+- Defines CORS origins, upload limits, admin settings, model names, and AI provider settings
+
+backend/app/extensions.py
+- Shared Flask extension instances
+- SQLAlchemy
+- Flask-Migrate
+- JWTManager
+- CORS
+- Flask-Limiter
+
+backend/app/models/
+- SQLAlchemy database models
+- User
+- Role
+- JobRole
+- Resume
+- Document
+- DocumentChunk
+- Summary
+- Resource
+- Bookmark
+- Roadmap
+- RoadmapStep
+- UserProgress
+- ActivityLog
+
+backend/app/routes/
+- Flask blueprints that define HTTP endpoints
+- auth.py: register, login, logout, current user
+- health.py: database health check
+- users.py: user dashboard and profile-related data
+- ats.py: resume/job-role analysis
+- summarization.py: text and document summarization
+- rag.py: document upload and question answering
+- roadmaps.py: roadmap listing, details, and progress
+- resources.py: learning resources and bookmarks
+- search.py: application search
+- admin.py: admin statistics and content management
+
+backend/app/services/
+- Business logic separated from HTTP route functions
+- ats_service.py: resume parsing and compatibility scoring
+- document_service.py: document extraction and chunk handling
+- embedding_service.py: embeddings and retrieval support
+- llm_service.py: optional provider calls
+- rag_service.py: document indexing and retrieval-augmented answers
+- resource_service.py: bookmark and resource behavior
+- resume_parser.py: resume text extraction
+- roadmap_service.py: progress calculations
+- search_service.py: search behavior
+- summarization_service.py: extractive and optional abstractive summarization
+- mongo_auth_service.py: MongoDB authentication record storage and synchronization
+
+backend/app/utils/
+- Shared validation, security, activity logging, file handling, error formatting, and text utilities
+
+backend/app/schemas/
+- Request and response validation structures for several API modules
+
+backend/tests/
+- Backend test suite
+- conftest.py: application and database fixtures
+- test_auth.py: register, login, /me, and admin access behavior
+- test_modules.py: summarization, roadmaps, resources, search, and ATS behavior
+- test_rag.py: RAG upload and query behavior without requiring an LLM key
+
+6. AUTHENTICATION FLOW
+----------------------
+
+Registration:
+1. Frontend sends name, email, and password to POST /api/auth/register.
+2. Backend validates required fields, email format, and password rules.
+3. A SQLAlchemy User identity row is created.
+4. If MONGODB_URI is configured, a MongoDB authentication document is created in the users collection.
+5. The password is stored as a Werkzeug password hash, never as plain text.
+6. The backend creates a JWT containing the numeric SQL user ID and role.
+7. The frontend stores the access token and authenticated user data.
+
+Login:
+1. Frontend sends email and password to POST /api/auth/login.
+2. Backend finds the corresponding SQL user identity.
+3. If MongoDB is enabled, the password is checked against the MongoDB auth record.
+4. If MongoDB is not configured, local/test mode falls back to the SQL password hash.
+5. A JWT is issued with the existing numeric SQL user ID.
+6. The frontend sends the token on later requests using:
+
+    Authorization: Bearer <token>
+
+Current-user request:
+- GET /api/auth/me requires a valid JWT.
+- The numeric identity is used to load the SQL user row.
+
+Why the JWT identity remains numeric:
+- Existing application tables use SQL foreign keys pointing to users.id.
+- Existing routes convert the JWT identity into an integer.
+- Replacing it with MongoDB ObjectId would require changing many routes and all user relationships.
+
+Admin behavior:
+- The JWT includes a role claim.
+- Admin endpoints require the ADMIN role.
+- Admin role changes update the SQL user and synchronize the Mongo auth record.
+
+7. DATABASE DESIGN
+------------------
+
+PostgreSQL/SQLAlchemy remains the main application database.
+
+The User table contains:
+- id
+- name
+- email
+- password_hash
+- role
+- created_at
+- updated_at
+
+Other relational records reference user IDs:
+- resumes
+- documents
+- summaries
+- bookmarks
+- user progress
+- activity logs
+
+MongoDB authentication documents contain fields such as:
+- sql_user_id
+- name
+- email
+- password_hash
+- role
+- created_at
+- updated_at
+
+A unique MongoDB index is created on email.
+
+This is currently a hybrid design, not a complete MongoDB-only migration. PostgreSQL is still required by the rest of the application.
+
+8. API SUMMARY
+--------------
+
+All successful API responses generally use:
+
+    {"success": true, "data": {}, "message": ""}
+
+Errors generally use:
+
+    {"success": false, "error": {"code": "...", "message": "..."}}
+
+Public endpoints:
+- GET /api/health
+- POST /api/auth/register
+- POST /api/auth/login
+
+Authenticated endpoints:
+- POST /api/auth/logout
+- GET /api/auth/me
+- GET /api/users/me/dashboard
+- GET /api/ats/roles
+- POST /api/ats/analyze
+- GET /api/ats/history
+- POST /api/summarization
+- POST /api/summarization/document
+- GET /api/rag/documents
+- POST /api/rag/upload
+- POST /api/rag/query
+- GET /api/roadmaps
+- GET /api/roadmaps/<id>
+- POST /api/roadmaps/<id>/progress
+- GET /api/resources
+- GET /api/resources/<id>
+- POST /api/resources/<id>/bookmark
+- GET /api/resources/bookmarks
+- GET /api/search
+
+Admin-only endpoints:
+- GET /api/admin/stats
+- GET /api/admin/users
+- PATCH /api/admin/users/<id>
+- POST, PUT, DELETE /api/admin/job-roles
+- POST, PUT, DELETE /api/admin/resources
+- POST /api/admin/roadmaps
+
+9. APPLICATION FEATURES
+-----------------------
+
+Learning roadmaps:
+- Roadmaps are divided into ordered steps.
+- Users can mark steps complete.
+- Progress is stored by user and roadmap step.
+- The dashboard aggregates roadmap and progress information.
+
+Resource library:
+- Resources have categories, subjects, difficulty, type, URLs, tags, and descriptions.
+- Users can filter and search resources.
+- Users can bookmark resources.
+- Administrators can create, update, and delete resources.
+
+ATS-style resume analysis:
+- Accepts supported resume files such as PDF and DOCX.
+- Compares resume content with a selected job role.
+- Produces an estimated compatibility score.
+- Uses skill, keyword, semantic, experience, and education weights.
+- This is an educational estimate, not an official employer ATS result.
+
+Summarization:
+- Supports text summarization.
+- Supports uploaded document summarization.
+- Extractive summarization works without an external LLM.
+- Optional abstractive summarization can use configured providers.
+
+RAG document question answering:
+- Users upload PDF, DOCX, or TXT documents.
+- Text is extracted and divided into document chunks.
+- Retrieval finds relevant chunks for a question.
+- Sentence Transformers embeddings are preferred when installed.
+- TF-IDF cosine retrieval is the portable fallback.
+- An optional LLM can generate an answer using the retrieved passages.
+- Retrieval can still work when LLM keys are missing.
+
+Admin management:
+- View statistics.
+- View users.
+- Change user roles.
+- Manage job roles.
+- Manage learning resources.
+- Manage roadmaps.
+
+10. AI AND NLP DESIGN
+---------------------
+
+The application intentionally supports graceful fallbacks.
+
+Embeddings:
+- Preferred: Sentence Transformers models when the optional ML dependencies are installed.
+- Fallback: TF-IDF and cosine similarity.
+
+Language models:
+- Together-compatible OpenAI API configuration is supported.
+- Hugging Face keys can be configured.
+- OpenAI-compatible keys and base URLs can be configured.
+- LLM features are optional; the basic application runs without them.
+
+This design keeps local development lighter and prevents the RAG and summarization modules from becoming unusable when an external provider is unavailable.
+
+11. ENVIRONMENT VARIABLES
+-------------------------
+
+Backend variables required on Render:
+
+    FLASK_ENV=production
+    FLASK_DEBUG=0
+    SECRET_KEY=<long random secret>
+    JWT_SECRET_KEY=<different long random secret>
+    DATABASE_URL=<PostgreSQL connection string>
+    CORS_ORIGINS=https://hackathon-virid-eight.vercel.app
+
+MongoDB authentication variables:
+
+    MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/innolearn?retryWrites=true&w=majority&appName=Cluster1
+    MONGODB_DATABASE=innolearn
+
+Optional admin seed variables:
+
+    ADMIN_EMAIL=admin@example.com
+    ADMIN_PASSWORD=<strong admin password>
+
+Optional AI variables:
+
+    LLM_PROVIDER=together
+    TOGETHER_API_KEY=<provider key>
+    OPENAI_API_KEY=<provider key>
+    OPENAI_BASE_URL=https://api.together.xyz/v1
+
+Frontend Vercel variable:
+
+    VITE_API_URL=https://hackathon-nbr0.onrender.com/api
+
+Security rules:
+- Never commit .env files.
+- Never put DATABASE_URL, MONGODB_URI, secret keys, or provider keys in frontend variables.
+- Only VITE_* variables are intended for frontend exposure.
+- Rotate credentials if they are pasted into chat, screenshots, logs, or public repositories.
+- Use long random values for SECRET_KEY and JWT_SECRET_KEY.
+
+12. LOCAL DEVELOPMENT
+---------------------
+
+Backend setup:
+
+    cd backend
+    python -m venv .venv
+    .\.venv\Scripts\activate
+    pip install -r requirements.txt
+
+Run backend:
+
+    cd backend
+    python run.py
+
+Default backend URL:
+
+    http://localhost:5000
+
+Health endpoint:
+
+    http://localhost:5000/api/health
+
+Frontend setup:
+
+    cd frontend
+    npm install
+
+Run frontend:
+
+    npm run dev
+
+Default frontend URL is normally:
+
+    http://localhost:5173
+
+If that port is busy, Vite chooses another port. The local frontend must use the local API URL unless a frontend environment variable overrides it:
+
+    VITE_API_URL=http://localhost:5000/api
+
+Seed the local database:
+
+    cd backend
+    python seed_db.py
+
+13. TESTING AND VALIDATION
+--------------------------
+
+Backend tests:
+
+    cd backend
+    .\.venv\Scripts\python.exe -m pytest -q
+
+The verified backend suite currently passes 9 tests. Tests cover:
+- User registration
+- Current-user endpoint
+- Invalid password rejection
+- User access denied to admin statistics
+- Admin access to statistics
+- Summarization
+- Roadmaps and resources
+- Search
+- ATS analysis
+- RAG upload and query without an LLM
+
+Frontend commands:
+
+    cd frontend
+    npm test
+    npm run build
+
+The frontend build uses TypeScript checking followed by Vite production compilation.
+
+14. DEPLOYMENT DESIGN
+---------------------
+
+GitHub:
+- Repository: https://github.com/abhi2huhh/hackathon
+- Main working branch in this project: master
+- Render watches the master branch for automatic deployment
+
+Render backend service:
+- Runtime: Python 3
+- Root directory: backend
+- Build command: pip install -r requirements.txt
+- Start command: gunicorn --bind 0.0.0.0:$PORT wsgi:app
+- Health check path: /api/health
+- Current public backend URL: https://hackathon-nbr0.onrender.com
+
+Vercel frontend:
+- Root directory should point to frontend if deploying from the monorepo
+- Build command: npm run build
+- Output directory: dist
+- Frontend variable: VITE_API_URL=https://hackathon-nbr0.onrender.com/api
+- Current frontend URL used for CORS: https://hackathon-virid-eight.vercel.app
+
+Render health behavior:
+- Render starts Gunicorn and checks /api/health.
+- The health route performs SELECT 1 through SQLAlchemy.
+- If DATABASE_URL is absent, invalid, or the PostgreSQL driver is missing, health returns 503 or the app fails at startup.
+- psycopg2-binary is included in requirements.txt for PostgreSQL URLs.
+- A healthy response looks like:
+
+    {"data":{"database":true,"status":"ok"},"message":"","success":true}
+
+15. DEPLOYMENT PROBLEMS THAT WERE FIXED
+---------------------------------------
+
+Problem: Render could not import psycopg2.
+Cause: The PostgreSQL driver was missing from backend/requirements.txt.
+Fix: Added psycopg2-binary.
+
+Problem: Render searched for backend files in the repository root.
+Cause: The service root directory was empty in a monorepo.
+Fix: Set Render root directory to backend.
+
+Problem: Render health checks returned 503.
+Cause: The health route checks the SQLAlchemy database and DATABASE_URL was not configured or unavailable.
+Fix: Configure a valid PostgreSQL DATABASE_URL and redeploy.
+
+Problem: Frontend displayed a generic server error.
+Possible causes:
+- VITE_API_URL was missing or pointed to an old backend.
+- The Vercel frontend was not redeployed after changing VITE_API_URL.
+- The backend API returned a validation, authentication, or database error.
+Fix: Set VITE_API_URL to the Render backend /api URL, redeploy Vercel, clear old localStorage tokens, and inspect the browser Network tab.
+
+16. SECURITY MODEL
+-------------------
+
+Passwords:
+- Passwords must never be stored as plain text.
+- Werkzeug password hashing is used.
+- MongoDB authentication documents store password hashes.
+
+JWT:
+- JWT_SECRET_KEY signs access tokens.
+- Tokens are sent using the Authorization Bearer header.
+- The frontend removes the token when a protected request receives HTTP 401.
+
+CORS:
+- Backend CORS is restricted to configured origins.
+- Production should list the exact Vercel frontend origin.
+
+Rate limiting:
+- Flask-Limiter applies limits to reduce abuse, especially on login and registration routes.
+
+Security headers:
+- X-Content-Type-Options: nosniff
+- X-Frame-Options: DENY
+- Referrer-Policy: strict-origin-when-cross-origin
+
+File validation:
+- Upload size is limited.
+- File extensions and MIME types are checked.
+- Supported file types include PDF, DOCX, and TXT depending on the feature.
+
+17. CURRENT LIMITATIONS AND IMPORTANT TRUTH
+-------------------------------------------
+
+The project is not a complete MongoDB-only application yet.
+
+Implemented:
+- MongoDB Atlas connection configuration
+- PyMongo dependency
+- MongoDB auth collection support
+- MongoDB password verification when MONGODB_URI is configured
+- SQL numeric identity preserved for existing routes
+- PostgreSQL support for the rest of the application
+
+Still dependent on PostgreSQL/SQLAlchemy:
+- Roadmaps
+- Roadmap steps
+- User progress
+- Resources
+- Bookmarks
+- Documents
+- Document chunks
+- Resumes
+- Summaries
+- Activity logs
+- Job roles
+- Admin statistics
+- Health check database verification
+
+To become MongoDB-only, every SQLAlchemy model and route would need to be migrated, including relationships, queries, indexes, transactions, seed data, tests, and the health check.
+
+18. RECOMMENDED NEXT STEPS
+--------------------------
+
+For the fastest stable deployment:
+1. Keep PostgreSQL as the main application database.
+2. Keep MongoDB Atlas for authentication records if that is a requirement.
+3. Configure DATABASE_URL in Render.
+4. Configure MONGODB_URI and MONGODB_DATABASE in Render.
+5. Configure VITE_API_URL in Vercel.
+6. Configure CORS_ORIGINS in Render.
+7. Redeploy both services.
+8. Test /api/health, registration, login, and /api/auth/me.
+
+For a future MongoDB-only architecture:
+1. Design MongoDB collections for every current SQL model.
+2. Replace SQLAlchemy services and route queries.
+3. Replace numeric foreign keys with stable Mongo references or preserved IDs.
+4. Rewrite seed data and migration scripts.
+5. Add integration tests against a test MongoDB database.
+6. Remove PostgreSQL-only dependencies after all routes are migrated.
+
+19. QUICK PRODUCTION CHECKLIST
+------------------------------
+
+Backend Render:
+[ ] Root directory is backend
+[ ] Build command is pip install -r requirements.txt
+[ ] Start command is gunicorn --bind 0.0.0.0:$PORT wsgi:app
+[ ] DATABASE_URL is a valid PostgreSQL URL
+[ ] MONGODB_URI is a valid Atlas URL with a rotated password
+[ ] MONGODB_DATABASE is innolearn
+[ ] SECRET_KEY is long and random
+[ ] JWT_SECRET_KEY is long, random, and different
+[ ] CORS_ORIGINS is the exact Vercel frontend URL
+[ ] Health check path is /api/health
+
+Frontend Vercel:
+[ ] Root directory is frontend
+[ ] Build command is npm run build
+[ ] Output directory is dist
+[ ] VITE_API_URL is https://hackathon-nbr0.onrender.com/api
+[ ] Production deployment was rebuilt after setting the variable
+
+Final smoke tests:
+[ ] GET /api/health returns 200
+[ ] Register creates an account
+[ ] Login returns a token
+[ ] /api/auth/me returns the logged-in user
+[ ] Protected dashboard loads
+[ ] Frontend can call the Render API without a CORS error
+[ ] Admin routes reject normal users
+
+20. FINAL PROJECT DESCRIPTION
+------------------------------
+
+InnoLearn is a full-stack learning and technical career platform. The React frontend provides a responsive and interactive workspace for learning roadmaps, resources, resume analysis, summarization, and document question answering. The Flask backend exposes modular REST APIs and separates routing, models, validation, business services, authentication, and error handling. PostgreSQL provides the relational system of record for the current application, while MongoDB Atlas stores authentication records through a compatibility bridge. JWTs protect the API, and Vercel plus Render provide the intended frontend and backend hosting model.
+
+The most important deployment fact is that MongoDB Atlas is currently part of the authentication design, but PostgreSQL is still required by the rest of the application. The application can only be deployed reliably when both database responsibilities are configured correctly, or after a complete migration of every remaining relational feature to MongoDB.
