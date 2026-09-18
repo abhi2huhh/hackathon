@@ -35,6 +35,7 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
+    AUTO_CREATE_DB = _bool(os.getenv("AUTO_CREATE_DB"), True)
     MONGODB_URI = os.getenv("MONGODB_URI", "")
     MONGODB_DATABASE = os.getenv("MONGODB_DATABASE", "innolearn")
     MONGODB_AUTH_COLLECTION = os.getenv("MONGODB_AUTH_COLLECTION", "users")

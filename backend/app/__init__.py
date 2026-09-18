@@ -36,6 +36,13 @@ def create_app(config_object=None) -> Flask:
         user_progress,
     )
 
+    if app.config.get("AUTO_CREATE_DB") and not app.config.get("TESTING"):
+        from app.seed import seed
+
+        with app.app_context():
+            db.create_all()
+            seed()
+
     from app.routes.admin import admin_bp
     from app.routes.ats import ats_bp
     from app.routes.auth import auth_bp
