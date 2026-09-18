@@ -8,6 +8,7 @@ from app.models.resource import Resource
 from app.models.roadmap import Roadmap
 from app.models.roadmap_step import RoadmapStep
 from app.models.user import User
+from app.services.mongo_auth_service import sync_role
 from app.utils.error_handlers import APIError, success
 from app.utils.security import admin_required
 from app.utils.validators import require_fields
@@ -50,6 +51,7 @@ def update_user(user_id: int):
         if payload["role"] not in {"USER", "ADMIN"}:
             raise APIError("VALIDATION_ERROR", "role must be USER or ADMIN.", 400)
         user.role = payload["role"]
+        sync_role(user)
     db.session.commit()
     return success(user.to_dict(), "User updated.")
 
